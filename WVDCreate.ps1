@@ -16,10 +16,11 @@
   6. Grant permissions to Security Group.
   7. Add virtual machine to a host pool => Conducted from azure portal
 #>
+$LogFileName = (Get-Date -format "yyyyMMddHHmm") + ".txt"
 
 # Import module
 import-module Az
-import-moduel AzureAD
+import-module AzureAD
 
 # Set Parameters
 $RGName = "wvd-rg"                      # Resouce Group Name
@@ -49,10 +50,16 @@ Connect-AzAccount -Credential $credential
 Connect-AzureAD -Credential $credential
 
 # Create ResouceGroup
-New-AzResourceGroup -Name $RGName -Location $RGLocation
+If(!(Get-AzResourceGroup -Name $RGName)){
+    New-AzResourceGroup -Name $RGName -Location $RGLocation
+} Else {
+    $msg = "Did not create the Resouce Group [" + $RGName + "] because it already exists."
+    Write-Output $msg | Out-File -FilePath $LogFileName -Encoding Default -append 
+}
 
 # Create WVD HostPool
-New-AzWvdHostPool -ResourceGroupName $RGName `
+if(!(Get-AzWvdHostPool -Name $HPName -ResourceGroupName $RGName)) {
+    New-AzWvdHostPool -ResourceGroupName $RGName `
                                 -Name $HPName `
                                 -Location $WVDLocation `
                                 -PreferredAppGroupType 'Desktop' `
@@ -67,29 +74,44 @@ New-AzWvdHostPool -ResourceGroupName $RGName `
                                 -CustomRdpProperty $null `
                                 -Ring $null `
                                 -ValidationEnvironment:$false
+} Else {
+    $msg = "Did not create the Host Pool [" + $HPName + "] because it already exists."
+    Write-Output $msg | Out-File -FilePath $LogFileName -Encoding Default -append 
+}
 
 # Get WVD HostPool ID
 $HPPath = Get-AzWvdHostPool -Name $HPName -ResourceGroupName $RGName
 
 # Create WVD Application Group
-New-AzWvdApplicationGroup -ResourceGroupName $RGName `
+if(!(Get-AzWvdApplicationGroup -Name $APName -ResourceGroupName $RGName)) {
+    New-AzWvdApplicationGroup -ResourceGroupName $RGName `
                             -Name $APName `
                             -Location $WVDLocation `
                             -FriendlyName $APFriendlyName `
                             -Description $APDescription `
                             -HostPoolArmPath $HPPath.Id `
                             -ApplicationGroupType 'Desktop'
+} Else {
+    $msg = "Did not create the Application Group [" + $APName + "] because it already exists."
+    Write-Output $msg | Out-File -FilePath $LogFileName -Encoding Default -append 
+}
 
 # Get WVD Application Group ID
 $APPath = Get-AzWvdApplicationGroup -Name $APName -ResourceGroupName $RGName
 
 # Create WVD WorkSpace
-New-AzWvdWorkspace -ResourceGroupName $RGName `
+If(!(Get-AzWvdWorkspace -Name $WSName -ResourceGroupName $RGName)) {
+    New-AzWvdWorkspace -ResourceGroupName $RGName `
                         -Name $WSName `
                         -Location $WVDLocation `
                         -FriendlyName $WSFriendlyName `
                         -ApplicationGroupReference $null `
                         -Description $WSDescription
+} Else {
+    $msg = "Did not create the WorkSpace [" + $WSName + "] because it already exists."
+    Write-Output $msg | Out-File -FilePath $LogFileName -Encoding Default -append 
+}
+
 
 # Add WVD Application Group to WorkSpace
 Register-AzWvdApplicationGroup -ResourceGroupName $RGName `
@@ -98,8 +120,14 @@ Register-AzWvdApplicationGroup -ResourceGroupName $RGName `
 
 # Grant permissions to WVD
 $WVDUsersGroup = Get-AzureADGroup -SearchString $WVDGroupName
-New-AzRoleAssignment -ObjectId $WVDUsersGroup.ObjectID -RoleDefinitionName "Desktop Virtualization User" -ResourceName $APName -ResourceGroupName $RGName -ResourceType 'Microsoft.DesktopVirtualization/applicationGroups'
+If($WVDUsersGroup) {
+    New-AzRoleAssignment -ObjectId $WVDUsersGroup.ObjectID -RoleDefinitionName "Desktop Virtualization User" -ResourceName $APName -ResourceGroupName $RGName -ResourceType 'Microsoft.DesktopVirtualization/applicationGroups'
+} Else {
+    $msg = "Did not process because the group [" + $WVDGroupName + "] did not exist."
+    Write-Output $msg | Out-File -FilePath $LogFileName -Encoding Default -append 
+}
 
 # Add Windows 10 image to WVD Host Pool
-Write-Host "Please add virtual machine to a host pool from Azure portal." -BackgroundColor Green -ForegroundColor Black
-
+$msg = "Please add virtual machine to a host pool from Azure portal."
+Write-Host $msg -BackgroundColor Green -ForegroundColor Black
+Write-Output $msg | Out-File -FilePath $LogFileName -Encoding Default -append 
